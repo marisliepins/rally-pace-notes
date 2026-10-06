@@ -6,7 +6,7 @@ void main() {
 
   test('1->6 default table', () {
     const c = GradeConfig(anchors: anchors);
-    const cases = <double, String?>{
+     final cases = <double, String?>{
       3: null, 8: '1', 15: '1+', 20: '2-', 25: '2', 30: '2+', 40: '3-',
       45: '3', 60: '3+', 75: '4-', 90: '4', 100: '4+', 110: '5-',
       120: '5', 140: '5+', 160: '6-', 200: '6', 400: '6',
