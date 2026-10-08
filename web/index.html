@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pace Notes">
+  <meta name="theme-color" content="#0b0d10">
+  <meta name="description" content="Rally pace-notes MVP">
+  <title>Rally Pace Notes</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b0d10; overflow: hidden;
+      -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    #rally-start { position: fixed; inset: 0; z-index: 9999; background: #0b0d10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-family: -apple-system, system-ui, sans-serif; color: #f2f4f7; text-align: center; padding: 24px; box-sizing: border-box; }
+    #rally-start h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: 1px; }
+    #rally-start p { color: #7d8896; max-width: 420px; line-height: 1.4; margin: 8px 0; }
+    #rally-start-btn { margin-top: 24px; font-size: 26px; font-weight: 800; color: #000;
+      background: #ff6a1f; border: 0; border-radius: 14px; padding: 22px 48px; }
+  </style>
+  <script src="rally.js"></script>
+</head>
+<body>
+  <div id="rally-start">
+    <h1>RALLY PACE NOTES</h1>
+    <p>Fix the phone on the steering wheel, wheel straight ahead.</p>
+    <button id="rally-start-btn">TAP TO START</button>
+    <p>The phone will ask for Motion &amp; Orientation and Location access. Allow both.</p>
+  </div>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
