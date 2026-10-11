@@ -54,7 +54,7 @@ class _DriveScreenState extends State<DriveScreen>
     _hold.reset();
     if (_fired) return;
     if (ms < 450) {
-      c.nextSegment();
+      c.resetDistance();
     } else {
       c.flash('RESET CANCELLED');
     }
@@ -218,8 +218,10 @@ class _DriveScreenState extends State<DriveScreen>
   // ------------------------------------------------------------- grade area
   Widget _gradeArea() {
     final angle = c.angle;
-    final grade = c.gradeConfig.gradeFor(angle);
-    final left = angle >= 0;
+    final shown = c.shownAngle;
+    final peakMode = c.settings.peakHold;
+    final grade = c.gradeConfig.gradeFor(shown);
+    final left = (grade == null ? angle : shown) >= 0;
     final dirColor = left ? kLeft : kRight;
     final gradeText = grade == null
         ? const Text('—', style: TextStyle(fontSize: 220, color: kDim, fontWeight: FontWeight.w800, height: 1))
@@ -247,14 +249,19 @@ class _DriveScreenState extends State<DriveScreen>
               children: [
                 Expanded(
                   child: CustomPaint(
-                    painter: DialPainter(angle, c.settings.anchors, dirColor),
+                    painter: DialPainter(
+                      angle,
+                      c.settings.anchors,
+                      dirColor,
+                      peak: peakMode && c.corner.active ? c.corner.peak : null,
+                    ),
                     child: const SizedBox.expand(),
                   ),
                 ),
                 Text(
-                  grade == null
-                      ? '${angle.abs().round()}°'
-                      : '${angle.abs().round()}° ${left ? 'L' : 'R'}',
+                  peakMode && c.corner.active
+                      ? '${angle.abs().round()}° · max ${shown.abs().round()}°'
+                      : '${angle.abs().round()}°${angle.abs() >= c.settings.deadZone ? (angle >= 0 ? ' L' : ' R') : ''}',
                   style: const TextStyle(
                     fontSize: 28,
                     color: kText,
@@ -275,8 +282,29 @@ class _DriveScreenState extends State<DriveScreen>
     final s = c.settings;
     final t = c.trip;
     final imp = s.imperial;
-    final liveLabel = t.inCorner ? s.lengthLabel(t.segment) : '';
-    final lastCornerLabel = t.lastCorner == null ? '' : s.lengthLabel(t.lastCorner!);
+    final cfg = c.gradeConfig;
+
+    Widget cornerTile;
+    if (c.corner.active) {
+      final len = c.cornerLength;
+      final label = s.lengthLabel(len);
+      cornerTile = _tile(
+        label: 'CORNER${label.isEmpty ? '' : ' · $label'}',
+        labelColor: kAccent,
+        value: fmtShort(len, imp),
+        border: kAccent,
+      );
+    } else {
+      final last = c.corner.last;
+      final label = last == null ? '' : s.lengthLabel(last.length);
+      cornerTile = _tile(
+        label: 'LAST CORNER${label.isEmpty ? '' : ' · $label'}',
+        labelColor: kDim,
+        value: last == null ? '—' : '${cfg.callFor(last.peak)}  ${fmtShort(last.length, imp)}',
+        border: kLine,
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       child: Row(
@@ -285,33 +313,15 @@ class _DriveScreenState extends State<DriveScreen>
           Expanded(
             flex: 4,
             child: _tile(
-              label: t.inCorner ? 'CORNER${liveLabel.isEmpty ? '' : ' · $liveLabel'}' : 'STRAIGHT',
-              labelColor: t.inCorner ? kAccent : kDim,
+              label: 'DISTANCE',
+              labelColor: kDim,
               value: fmtShort(t.segment, imp),
-              border: t.inCorner ? kAccent : kLine,
+              border: kLine,
+              sub: t.lastSegment == null ? null : 'prev ${fmtShort(t.lastSegment!, imp)}',
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(
-            flex: 3,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: _box(kLine),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _small('LAST STRAIGHT', t.lastStraight == null ? '—' : fmtShort(t.lastStraight!, imp)),
-                  _small(
-                    'LAST CORNER',
-                    t.lastCorner == null
-                        ? '—'
-                        : '${fmtShort(t.lastCorner!, imp)}${lastCornerLabel.isEmpty ? '' : '  $lastCornerLabel'}',
-                  ),
-                ],
-              ),
-            ),
-          ),
+          Expanded(flex: 4, child: cornerTile),
           const SizedBox(width: 10),
           Expanded(
             flex: 3,
@@ -328,14 +338,30 @@ class _DriveScreenState extends State<DriveScreen>
         border: Border.all(color: border, width: 2),
       );
 
-  Widget _tile({required String label, required Color labelColor, required String value, required Color border}) {
+  Widget _tile({
+    required String label,
+    required Color labelColor,
+    required String value,
+    required Color border,
+    String? sub,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: _box(border),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(color: labelColor, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 1)),
+          Row(children: [
+            Flexible(
+              child: Text(label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: labelColor, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 1)),
+            ),
+            if (sub != null) ...[
+              const Spacer(),
+              Text(sub, style: const TextStyle(color: kDim, fontSize: 14, fontFeatures: tabular)),
+            ],
+          ]),
           Expanded(
             child: FittedBox(
               fit: BoxFit.scaleDown,
@@ -350,18 +376,6 @@ class _DriveScreenState extends State<DriveScreen>
       ),
     );
   }
-
-  Widget _small(String label, String value) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label, style: const TextStyle(color: kDim, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(value, style: const TextStyle(color: kText, fontSize: 24, fontWeight: FontWeight.w600, fontFeatures: tabular)),
-          ),
-        ],
-      );
 
   Widget _banner(String text) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -387,10 +401,11 @@ class _DriveScreenState extends State<DriveScreen>
 /// Steering-wheel style dial: needle shows the wheel angle, ticks show the
 /// grade anchor angles on both sides.
 class DialPainter extends CustomPainter {
-  DialPainter(this.angle, this.anchors, this.needleColor);
+  DialPainter(this.angle, this.anchors, this.needleColor, {this.peak});
   final double angle;
   final List<double> anchors;
   final Color needleColor;
+  final double? peak;
 
   Offset _at(Offset c, double deg, double r) {
     final t = deg * math.pi / 180;
@@ -419,6 +434,10 @@ class DialPainter extends CustomPainter {
     canvas.drawLine(_at(center, 0, r - 14), _at(center, 0, r), Paint()
       ..strokeWidth = 4
       ..color = kText);
+    final p = peak;
+    if (p != null) {
+      canvas.drawCircle(_at(center, p, r - 5), 7, Paint()..color = needleColor);
+    }
     canvas.drawLine(center, _at(center, angle, r * 0.88), Paint()
       ..strokeWidth = 6
       ..strokeCap = StrokeCap.round
@@ -428,5 +447,8 @@ class DialPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant DialPainter old) =>
-      old.angle != angle || old.anchors != anchors || old.needleColor != needleColor;
+      old.angle != angle ||
+      old.anchors != anchors ||
+      old.needleColor != needleColor ||
+      old.peak != peak;
 }

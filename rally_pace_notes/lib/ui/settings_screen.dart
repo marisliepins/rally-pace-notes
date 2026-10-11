@@ -111,6 +111,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           _livePreview(),
           _section('Corner grades'),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Hold max value through the corner'),
+            subtitle: const Text(
+                'On: shows the largest grade of the corner until the wheel is back to straight. '
+                'Off: shows the live value.'),
+            value: _draft.peakHold,
+            onChanged: (v) => setState(() => _draft.peakHold = v),
+          ),
+          const SizedBox(height: 8),
           SegmentedButton<GradeMode>(
             segments: const [
               ButtonSegment(value: GradeMode.oneToSix, label: Text('1 → 6  (6 = sharpest)')),
@@ -132,8 +142,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             label: '${_draft.zonePercent.round()}%',
             onChanged: (v) => setState(() => _draft.zonePercent = v),
           ),
-          _numberField('Straight (no grade) below', _deadCtl, '°'),
+          _numberField('Straight (no grade, corner ends) below', _deadCtl, '°'),
           _section('Corner length'),
+          const Text(
+            'Measured automatically from the wheel leaving straight until it is back to straight.',
+            style: TextStyle(color: kDim),
+          ),
           _numberField('LONG from', _longCtl, unitLen),
           _numberField('SUPER LONG from', _superCtl, unitLen),
           _section('Display'),
@@ -201,7 +215,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           OutlinedButton(onPressed: _restoreDefaults, child: const Text('Restore default values')),
           const SizedBox(height: 12),
           const Text(
-            'Remote / keyboard: Space, Enter, → or ↓ = next segment.  ← ↑ Backspace or Esc = reset all.',
+            'Remote / keyboard: Space, Enter, → or ↓ = reset distance.  ← ↑ Backspace or Esc = reset all.\n'
+            'App version $appVersion',
             style: TextStyle(color: kDim),
           ),
         ],

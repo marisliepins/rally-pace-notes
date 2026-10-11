@@ -3,7 +3,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.2 (GPS fix)';
+  var VERSION = '0.3';
   var KEY = 'rally.settings.v1';
   var S = {
     gx: 0, gy: 0,

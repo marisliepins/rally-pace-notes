@@ -4,16 +4,20 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'bridge.dart';
+import 'corner.dart';
 import 'grading.dart';
 import 'settings.dart';
 import 'steering.dart';
 import 'trip.dart';
+
+const String appVersion = '0.3';
 
 /// Polls the sensors ~50 times a second and owns all live state.
 class AppController extends ChangeNotifier {
   Settings settings = Settings();
   final SteeringEstimator steering = SteeringEstimator();
   final Trip trip = Trip();
+  final CornerTracker corner = CornerTracker();
 
   /// Keyboard / BLE-remote keys only act while the drive screen is shown.
   bool driveActive = true;
@@ -25,13 +29,14 @@ class AppController extends ChangeNotifier {
   int _lastCount = -1;
   List<double>? _lastGyro;
   DateTime _lastSampleAt = DateTime.now();
+  DateTime _lastTickAt = DateTime.now();
   int _ticks = 0;
 
-  static const _nextKeys = {
+  static const _shortResetKeys = {
     ' ', 'Enter', 'ArrowDown', 'ArrowRight', 'PageDown',
     'MediaTrackNext', 'MediaPlayPause', 'AudioVolumeUp',
   };
-  static const _resetKeys = {
+  static const _resetAllKeys = {
     'ArrowUp', 'ArrowLeft', 'PageUp', 'Backspace', 'Escape',
     'MediaTrackPrevious', 'AudioVolumeDown',
   };
@@ -49,10 +54,21 @@ class AppController extends ChangeNotifier {
   double get angle => steering.angle(invert: settings.invertDirection);
   GradeConfig get gradeConfig => settings.gradeConfig;
 
+  /// Angle shown as the big grade: live, or the corner peak in max-hold mode.
+  double get shownAngle {
+    if (!settings.peakHold) return angle;
+    return corner.active ? corner.peak : 0;
+  }
+
+  double get cornerLength => corner.lengthAt(trip.odometerAt(DateTime.now()));
+
   void _tick() {
+    final now = DateTime.now();
+    final tickDt = now.difference(_lastTickAt).inMicroseconds / 1e6;
+    _lastTickAt = now;
+
     final m = Bridge.motion();
     if (m != null && m.count != _lastCount) {
-      final now = DateTime.now();
       final dt = now.difference(_lastSampleAt).inMicroseconds / 1e6;
       _lastSampleAt = now;
       List<double>? gyroDelta;
@@ -74,12 +90,20 @@ class AppController extends ChangeNotifier {
     for (final f in Bridge.drainFixes()) {
       trip.addFix(f);
     }
+    if (steering.ready) {
+      corner.update(
+        angle: angle,
+        deadZone: settings.deadZone,
+        odometer: trip.odometerAt(now),
+        dt: tickDt.clamp(0.0, 0.5).toDouble(),
+      );
+    }
     final keys = Bridge.drainKeys();
     if (driveActive) {
       for (final k in keys) {
-        if (_nextKeys.contains(k)) {
-          nextSegment();
-        } else if (_resetKeys.contains(k)) {
+        if (_shortResetKeys.contains(k)) {
+          resetDistance();
+        } else if (_resetAllKeys.contains(k)) {
           resetAll();
         }
       }
@@ -93,23 +117,19 @@ class AppController extends ChangeNotifier {
     eventAt = DateTime.now();
   }
 
-  void nextSegment() {
-    final wasCorner = trip.inCorner;
+  /// Short tap: clear the distance since the last tap.
+  void resetDistance() {
     final d = trip.segment;
-    trip.next();
-    final imp = settings.imperial;
-    if (wasCorner) {
-      final label = settings.lengthLabel(d);
-      flash('CORNER END · ${fmtShort(d, imp)}${label.isEmpty ? '' : ' $label'}');
-    } else {
-      flash('CORNER START · straight ${fmtShort(d, imp)}');
-    }
+    trip.resetSegment();
+    flash('${fmtShort(d, settings.imperial)} · DISTANCE RESET');
     notifyListeners();
   }
 
+  /// Long press: clear total, short distance and last corner.
   void resetAll() {
     trip.resetAll();
-    flash('RESET · total and corner distance');
+    corner.clear();
+    flash('RESET · total and distance');
     notifyListeners();
   }
 

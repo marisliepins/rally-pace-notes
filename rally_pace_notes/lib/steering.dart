@@ -18,6 +18,14 @@ class SteeringEstimator {
   double _zero = 0;
   bool ready = false;
   final List<double> _score = [0, 0, 0];
+  double _turnRate = 0;
+
+  /// Car rotation rate (deg/s) above which gravity correction pauses.
+  static const double turnGate = 3.0;
+
+  /// Smoothed car rotation rate in deg/s (from the non-steering gyro axes).
+  double get carTurnRate => _turnRate;
+  bool get gravityPaused => _turnRate > turnGate;
 
   /// Gyro axis index (0 = alpha, 1 = beta, 2 = gamma) once learned.
   int? get gyroAxis {
@@ -32,7 +40,8 @@ class SteeringEstimator {
     final a = gyroAxis;
     if (a == null) return 'learning (turn the wheel a bit)';
     const names = ['alpha', 'beta', 'gamma'];
-    return '${names[a]} ${_score[a] >= 0 ? '+' : '-'}';
+    return '${names[a]} ${_score[a] >= 0 ? '+' : '-'} · car turn ${_turnRate.round()}°/s'
+        '${gravityPaused ? ' (gyro only)' : ''}';
   }
 
   /// [gyroDelta]: rotation since last sample in degrees, per axis
@@ -73,11 +82,33 @@ class SteeringEstimator {
     }
 
     final axis = gyroAxis;
+
+    // Car rotation (yaw/pitch) shows up on the two gyro axes that are NOT the
+    // steering axis. While the car is turning, sideways force tilts the
+    // gravity reading, so gravity correction is paused and the gyro alone
+    // holds the angle. Fast attack, slow (0.5 s) release.
+    if (gyroDelta != null && axis != null) {
+      var sq = 0.0;
+      for (var k = 0; k < 3; k++) {
+        if (k != axis) sq += gyroDelta[k] * gyroDelta[k];
+      }
+      final rate = math.sqrt(sq) / d;
+      _turnRate = rate > _turnRate ? rate : _turnRate + (rate - _turnRate) * (d / (0.5 + d));
+    } else {
+      _turnRate = 0;
+    }
+
     if (useGyro && gyroDelta != null && axis != null) {
       final step = gyroDelta[axis] * (_score[axis] >= 0 ? 1 : -1);
       final predicted = _fused + step;
-      if (gravValid) {
+      if (gravValid && _turnRate <= turnGate) {
         final w = tau / (tau + d);
+        _fused = w * predicted + (1 - w) * _grav;
+      } else if (gravValid) {
+        // Car turning (or rough road): only a very slow correction (20 s) so
+        // gyro drift can't build up, while a corner's angle is held.
+        const slow = 20.0;
+        final w = slow / (slow + d);
         _fused = w * predicted + (1 - w) * _grav;
       } else {
         _fused = predicted;

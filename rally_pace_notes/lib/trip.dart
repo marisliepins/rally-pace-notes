@@ -20,10 +20,11 @@ double distanceMeters(double lat1, double lon1, double lat2, double lon2) {
   return 2 * _earthRadius * math.asin(math.min(1.0, math.sqrt(a)));
 }
 
-/// GPS trip meter with alternating STRAIGHT / CORNER segments.
+/// GPS trip meter.
 ///
-/// Short tap (next): STRAIGHT -> CORNER stores the straight length,
-/// CORNER -> STRAIGHT stores the corner length. Long press resets all.
+/// * [segment]  - distance since the last short tap (reset by the driver).
+/// * [total]    - distance since the last long press.
+/// * [odometer] - never reset; used to measure corner length.
 class Trip {
   Trip({this.maxAccuracy = 25});
 
@@ -32,9 +33,8 @@ class Trip {
 
   double total = 0;
   double segment = 0;
-  bool inCorner = false;
-  double? lastStraight;
-  double? lastCorner;
+  double odometer = 0;
+  double? lastSegment;
   double? speed;
   double? accuracy;
   DateTime? lastFixAt;
@@ -66,26 +66,33 @@ class Trip {
     if (moving && d >= minStep) {
       total += d;
       segment += d;
+      odometer += d;
       _anchor = f;
     }
   }
 
-  void next() {
-    if (inCorner) {
-      lastCorner = segment;
-    } else {
-      lastStraight = segment;
-    }
-    inCorner = !inCorner;
+  /// Odometer estimated for [now]: GPS updates about once a second, so the
+  /// distance since the last fix is filled in from the current speed.
+  double odometerAt(DateTime now) {
+    final at = lastFixAt;
+    final v = speed;
+    if (at == null || v == null || v < 0.8) return odometer;
+    final secs = now.difference(at).inMilliseconds / 1000;
+    if (secs <= 0) return odometer;
+    return odometer + v * math.min(secs, 1.5);
+  }
+
+  /// Short tap: remember and clear the distance since the last tap.
+  void resetSegment() {
+    lastSegment = segment;
     segment = 0;
   }
 
+  /// Long press: clear total and short distance.
   void resetAll() {
     total = 0;
     segment = 0;
-    inCorner = false;
-    lastStraight = null;
-    lastCorner = null;
+    lastSegment = null;
     final l = _last;
     if (l != null && l.accuracy <= maxAccuracy) _anchor = l;
   }

@@ -6,8 +6,9 @@ class Settings {
     this.mode = GradeMode.oneToSix,
     this.zonePercent = 15,
     this.deadZone = 5,
-    this.longCorner = 40,
-    this.superLongCorner = 60,
+    this.longCorner = 50,
+    this.superLongCorner = 70,
+    this.peakHold = true,
     this.imperial = false,
     this.showSpeed = true,
     this.invertDirection = false,
@@ -25,6 +26,9 @@ class Settings {
   double deadZone;
   double longCorner; // metres
   double superLongCorner; // metres
+  /// true = show the largest angle of the current corner until the wheel is
+  /// back to straight; false = show the live angle.
+  bool peakHold;
   bool imperial;
   bool showSpeed;
   bool invertDirection;
@@ -48,6 +52,8 @@ class Settings {
   }
 
   Map<String, dynamic> toJson() => {
+        'v': 2,
+        'peakHold': peakHold,
         'anchors': anchors,
         'mode': mode.name,
         'zonePercent': zonePercent,
@@ -69,6 +75,9 @@ class Settings {
         ?.map((e) => (e as num).toDouble())
         .toList();
     final rot = (j['rotation'] as num?)?.toInt() ?? 1;
+    // Settings saved by version 0.1/0.2 still hold the old 40/60 m defaults.
+    final oldDefaults =
+        j['v'] == null && d('longCorner', 40) == 40 && d('superLongCorner', 60) == 60;
     return Settings(
       anchors: (rawAnchors != null && rawAnchors.length == 6) ? rawAnchors : null,
       mode: j['mode'] == GradeMode.sixToOne.name
@@ -76,8 +85,9 @@ class Settings {
           : GradeMode.oneToSix,
       zonePercent: d('zonePercent', 15),
       deadZone: d('deadZone', 5),
-      longCorner: d('longCorner', 40),
-      superLongCorner: d('superLongCorner', 60),
+      longCorner: oldDefaults ? 50 : d('longCorner', 50),
+      superLongCorner: oldDefaults ? 70 : d('superLongCorner', 70),
+      peakHold: b('peakHold', true),
       imperial: b('imperial', false),
       showSpeed: b('showSpeed', true),
       invertDirection: b('invertDirection', false),
