@@ -34,25 +34,33 @@ class CornerTracker {
   }
 
   /// Feed one sample. Returns the finished corner when one ends.
+  /// A corner starts at [deadZone] and ends once the angle has stayed below
+  /// [endBelow] (default: [deadZone]) for [endDelay] seconds. A higher end
+  /// level keeps small sensor errors or road shake from holding a corner open.
   CornerResult? update({
     required double angle,
     required double deadZone,
     required double odometer,
     required double dt,
+    double? endBelow,
   }) {
     final a = angle.abs();
+    // Corners that never reached the end level end at the dead zone, so a
+    // small wiggle does not keep restarting.
+    final e = endBelow ?? deadZone;
+    final endAt = peak.abs() >= e ? e : deadZone;
     if (!active) {
       if (a >= deadZone) _begin(angle, odometer);
       return null;
     }
-    if (a >= deadZone) {
+    if (a >= deadZone && (angle > 0) != (peak > 0)) {
+      // Crossed straight to the other side quickly (S-bend): new corner.
+      final done = _finish(odometer);
+      _begin(angle, odometer);
+      return done;
+    }
+    if (a >= endAt) {
       _straightFor = 0;
-      if ((angle > 0) != (peak > 0)) {
-        // Crossed straight to the other side quickly (S-bend): new corner.
-        final done = _finish(odometer);
-        _begin(angle, odometer);
-        return done;
-      }
       if (a > peak.abs()) peak = angle;
       return null;
     }

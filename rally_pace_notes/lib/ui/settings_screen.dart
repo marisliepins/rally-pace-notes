@@ -19,6 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _deadCtl;
   late TextEditingController _longCtl;
   late TextEditingController _superCtl;
+  bool _restored = false;
 
   @override
   void initState() {
@@ -70,6 +71,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_draft.superLongCorner <= _draft.longCorner) {
       return _error('"Super long" must be longer than "long".');
     }
+    // ZERO may have been pressed while this screen was open; keep that value.
+    if (!_restored) _draft.zeroTrim = widget.c.settings.zeroTrim;
     widget.c.saveSettings(_draft);
     Navigator.of(context).pop();
   }
@@ -89,6 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _longCtl.dispose();
       _superCtl.dispose();
       _draft = Settings();
+      _restored = true;
       _bindControllers();
     });
   }
@@ -206,7 +210,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Motion: ${s['motion'] ?? '-'}\n'
                 'GPS: ${s['geo'] ?? '-'}\n'
                 'Screen awake: ${s['wake'] ?? '-'}\n'
-                'Gyro axis: ${widget.c.steering.gyroInfo}',
+                'Gyro axis: ${widget.c.steering.gyroInfo}\n'
+                'Zero: landscape ${widget.c.settings.zeroTrim >= 0 ? '+' : ''}${widget.c.settings.zeroTrim.toStringAsFixed(1)}°',
                 style: const TextStyle(color: kDim, height: 1.5),
               );
             },

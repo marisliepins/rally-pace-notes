@@ -10,7 +10,9 @@ import 'settings.dart';
 import 'steering.dart';
 import 'trip.dart';
 
-const String appVersion = '0.3';
+import 'dart:math' as math;
+
+const String appVersion = '0.4';
 
 /// Polls the sensors ~50 times a second and owns all live state.
 class AppController extends ChangeNotifier {
@@ -48,6 +50,7 @@ class AppController extends ChangeNotifier {
         settings = Settings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
       } catch (_) {}
     }
+    steering.trim = settings.zeroTrim;
     _timer = Timer.periodic(const Duration(milliseconds: 20), (_) => _tick());
   }
 
@@ -94,6 +97,7 @@ class AppController extends ChangeNotifier {
       corner.update(
         angle: angle,
         deadZone: settings.deadZone,
+        endBelow: math.max(settings.deadZone, settings.anchors.first),
         odometer: trip.odometerAt(now),
         dt: tickDt.clamp(0.0, 0.5).toDouble(),
       );
@@ -133,9 +137,17 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// ZERO: fine-tune straight ahead. Saved, so the next start begins from it.
   void setZero() {
     steering.setZero();
-    flash('ZERO SET');
+    final t = steering.trimFromLandscape;
+    if (t.abs() <= 30) {
+      settings.zeroTrim = t;
+      Bridge.save(jsonEncode(settings.toJson()));
+      flash('ZERO SET · saved');
+    } else {
+      flash('ZERO SET · not saved (more than 30° from landscape)');
+    }
     notifyListeners();
   }
 

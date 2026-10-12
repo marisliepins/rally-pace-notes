@@ -19,6 +19,10 @@ class SteeringEstimator {
   bool ready = false;
   final List<double> _score = [0, 0, 0];
   double _turnRate = 0;
+  double _base = 0;
+
+  /// Saved fine-tune offset (degrees) from the landscape position, set by ZERO.
+  double trim = 0;
 
   /// Car rotation rate (deg/s) above which gravity correction pauses.
   static const double turnGate = 3.0;
@@ -65,7 +69,11 @@ class SteeringEstimator {
         _lastRaw = raw;
         _grav = raw;
         _fused = raw;
-        _zero = raw; // first reading = straight ahead until "Zero" is pressed
+        // Straight ahead = phone in landscape (nearest of the two landscape
+        // positions), plus the saved ZERO fine-tune. No need to start with
+        // the wheel exactly straight.
+        _base = (raw / 180).roundToDouble() * 180;
+        _zero = _base + trim;
         ready = true;
         return;
       }
@@ -83,16 +91,24 @@ class SteeringEstimator {
 
     final axis = gyroAxis;
 
-    // Car rotation (yaw/pitch) shows up on the two gyro axes that are NOT the
-    // steering axis. While the car is turning, sideways force tilts the
-    // gravity reading, so gravity correction is paused and the gyro alone
-    // holds the angle. Fast attack, slow (0.5 s) release.
+    // Car yaw (turning) is rotation about the vertical, i.e. along gravity.
+    // While the car is turning, sideways force tilts the gravity reading, so
+    // gravity correction is paused and the gyro alone holds the angle.
+    // Only the yaw part counts: pitch/bounce from bumps is about an axis at
+    // right angles to gravity and is ignored. Fast attack, 0.5 s release.
     if (gyroDelta != null && axis != null) {
-      var sq = 0.0;
-      for (var k = 0; k < 3; k++) {
-        if (k != axis) sq += gyroDelta[k] * gyroDelta[k];
+      double rate;
+      final gn = math.sqrt(gx * gx + gy * gy);
+      if (axis == 0 && gravValid) {
+        // steering on alpha (z): x = beta, y = gamma
+        rate = ((gyroDelta[1] * gx + gyroDelta[2] * gy) / gn).abs() / d;
+      } else {
+        var sq = 0.0;
+        for (var k = 0; k < 3; k++) {
+          if (k != axis) sq += gyroDelta[k] * gyroDelta[k];
+        }
+        rate = math.sqrt(sq) / d;
       }
-      final rate = math.sqrt(sq) / d;
       _turnRate = rate > _turnRate ? rate : _turnRate + (rate - _turnRate) * (d / (0.5 + d));
     } else {
       _turnRate = 0;
@@ -133,4 +149,7 @@ class SteeringEstimator {
   double angle({bool invert = false}) => (_fused - _zero) * (invert ? -1 : 1);
 
   void setZero() => _zero = _fused;
+
+  /// Current zero relative to the landscape position, -180..180 degrees.
+  double get trimFromLandscape => _wrap(_zero - _base);
 }

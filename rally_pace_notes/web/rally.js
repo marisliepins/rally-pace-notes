@@ -3,7 +3,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.3';
+  var VERSION = '0.4';
   var KEY = 'rally.settings.v1';
   var S = {
     gx: 0, gy: 0,

@@ -4,12 +4,13 @@ A quick test of the pace-notes idea using only the iPhone's own sensors, before 
 Flutter code, running for now as a web app in iPhone Safari (no Mac or Apple developer account needed).
 The same code can later be built as a native iPhone and Android app.
 
-## What it does (version 0.3)
+## What it does (version 0.4)
 
-- **Steering angle → corner grade.** The phone sits on the steering wheel. The gyroscope holds the angle, and gravity corrects slow drift. While the car itself is turning, gravity correction pauses, because cornering force tilts the gravity reading.
+- **Steering angle → corner grade.** The phone sits on the steering wheel in landscape (turned left from portrait). The gyroscope holds the angle, and gravity corrects slow drift. While the car itself is turning (yaw), gravity correction pauses, because cornering force tilts the gravity reading. Road bumps don't pause it.
+- **Straight ahead = phone in landscape.** This is set automatically at start, so the wheel doesn't need to be straight when you start. **ZERO** fine-tunes it for a slightly tilted mount, and that adjustment is saved for the next start.
 - **Two display modes** (Settings → *Hold max value through the corner*):
-  - **On (default):** shows the largest grade of the corner until the wheel is back to straight.
-  - **Off:** shows the live value.
+  - **Off (default):** shows the live value.
+  - **On:** shows the largest grade of the corner until the wheel is back below the grade-1 angle.
 - **Configurable grade table**, stored on the phone. Defaults: 1 = 10°, 2 = 25°, 3 = 45°, 4 = 90°, 5 = 120°, 6 = 180°. One switch selects 1→6 or 6→1 mode. "+" and "−" mark the zones between grades (±15% of each gap is the plain grade). Left and right use the same values.
 - **Corner length, measured automatically.** It runs from the moment the wheel leaves straight until it has been back to straight for 0.4 s. It is labelled **LONG** from 50 m and **SUPER LONG** from 70 m (both editable). The last corner's grade and length stay on screen.
 - **GPS distances:**

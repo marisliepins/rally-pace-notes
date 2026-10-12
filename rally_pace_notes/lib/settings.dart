@@ -8,7 +8,8 @@ class Settings {
     this.deadZone = 5,
     this.longCorner = 50,
     this.superLongCorner = 70,
-    this.peakHold = true,
+    this.peakHold = false,
+    this.zeroTrim = 0,
     this.imperial = false,
     this.showSpeed = true,
     this.invertDirection = false,
@@ -29,6 +30,8 @@ class Settings {
   /// true = show the largest angle of the current corner until the wheel is
   /// back to straight; false = show the live angle.
   bool peakHold;
+  /// Fine-tune of straight-ahead relative to landscape, degrees (ZERO button).
+  double zeroTrim;
   bool imperial;
   bool showSpeed;
   bool invertDirection;
@@ -54,6 +57,7 @@ class Settings {
   Map<String, dynamic> toJson() => {
         'v': 2,
         'peakHold': peakHold,
+        'zeroTrim': zeroTrim,
         'anchors': anchors,
         'mode': mode.name,
         'zonePercent': zonePercent,
@@ -87,7 +91,8 @@ class Settings {
       deadZone: d('deadZone', 5),
       longCorner: oldDefaults ? 50 : d('longCorner', 50),
       superLongCorner: oldDefaults ? 70 : d('superLongCorner', 70),
-      peakHold: b('peakHold', true),
+      peakHold: b('peakHold', false),
+      zeroTrim: d('zeroTrim', 0),
       imperial: b('imperial', false),
       showSpeed: b('showSpeed', true),
       invertDirection: b('invertDirection', false),
