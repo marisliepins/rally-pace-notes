@@ -78,8 +78,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _error(String msg) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: kBad),
+      SnackBar(
+        content: Text('NOT SAVED: $msg',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black)),
+        backgroundColor: kBad,
+        duration: const Duration(seconds: 5),
+      ),
     );
   }
 
@@ -102,6 +108,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     const unitLen = 'm';
     return Scaffold(
       appBar: AppBar(
+        // Back also saves: there is no way to lose changes by accident.
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Save and close',
+          onPressed: _save,
+        ),
         title: const Text('Settings'),
         actions: [
           Padding(
@@ -210,6 +223,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Motion: ${s['motion'] ?? '-'}\n'
                 'GPS: ${s['geo'] ?? '-'}\n'
                 'Screen awake: ${s['wake'] ?? '-'}\n'
+                'Running as: ${s['homeScreen'] == true ? 'Home Screen app ✓' : 'Safari tab (settings lost if Private)'}\n'
+                'Last saved: ${(s['savedAt'] ?? '').toString().isEmpty ? 'never' : s['savedAt']}\n'
                 'Gyro axis: ${widget.c.steering.gyroInfo}\n'
                 'Zero: landscape ${widget.c.settings.zeroTrim >= 0 ? '+' : ''}${widget.c.settings.zeroTrim.toStringAsFixed(1)}°',
                 style: const TextStyle(color: kDim, height: 1.5),
@@ -218,6 +233,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 24),
           OutlinedButton(onPressed: _restoreDefaults, child: const Text('Restore default values')),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () {
+              widget.c.flash('Settings closed · changes discarded');
+              Navigator.of(context).pop();
+            },
+            child: const Text('Close without saving'),
+          ),
           const SizedBox(height: 12),
           const Text(
             'Remote / keyboard: Space, Enter, → or ↓ = reset distance.  ← ↑ Backspace or Esc = reset all.\n'

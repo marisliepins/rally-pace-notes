@@ -20,6 +20,12 @@ class SteeringEstimator {
   final List<double> _score = [0, 0, 0];
   double _turnRate = 0;
   double _base = 0;
+  double _stillFor = 0;
+  double _stillRef = 0;
+
+  /// Straight ahead has been fixed: the phone was held still in landscape
+  /// for 1 s (or ZERO was pressed). Before that, angle() is 0.
+  bool locked = false;
 
   /// Saved fine-tune offset (degrees) from the landscape position, set by ZERO.
   double trim = 0;
@@ -58,6 +64,7 @@ class SteeringEstimator {
     required double dt,
     required bool useGyro,
     required double tau,
+    bool stationary = false,
   }) {
     final d = dt.clamp(0.001, 0.5).toDouble();
     final gravValid = math.sqrt(gx * gx + gy * gy) > 2.0;
@@ -69,11 +76,7 @@ class SteeringEstimator {
         _lastRaw = raw;
         _grav = raw;
         _fused = raw;
-        // Straight ahead = phone in landscape (nearest of the two landscape
-        // positions), plus the saved ZERO fine-tune. No need to start with
-        // the wheel exactly straight.
-        _base = (raw / 180).roundToDouble() * 180;
-        _zero = _base + trim;
+        _stillRef = raw;
         ready = true;
         return;
       }
@@ -113,6 +116,8 @@ class SteeringEstimator {
     } else {
       _turnRate = 0;
     }
+    // GPS says the car is parked: no cornering force, nothing to pause.
+    if (stationary) _turnRate = 0;
 
     if (useGyro && gyroDelta != null && axis != null) {
       final step = gyroDelta[axis] * (_score[axis] >= 0 ? 1 : -1);
@@ -133,6 +138,33 @@ class SteeringEstimator {
       const lp = 0.08; // light smoothing when gravity only
       _fused += (_grav - _fused) * (d / (lp + d));
     }
+
+    // Fix straight ahead once the phone is held still near landscape for 1 s.
+    // Straight ahead = the nearest landscape position plus the saved ZERO
+    // fine-tune, so the wheel need not be straight and a portrait start works.
+    if (!locked && gravValid) {
+      var gyroRate = 0.0;
+      if (gyroDelta != null) {
+        var sq = 0.0;
+        for (final v in gyroDelta) {
+          sq += v * v;
+        }
+        gyroRate = math.sqrt(sq) / d;
+      }
+      if ((_grav - _stillRef).abs() > 3 || gyroRate > 15) {
+        _stillRef = _grav;
+        _stillFor = 0;
+      } else {
+        _stillFor += d;
+      }
+      final nearest = (_grav / 180).roundToDouble() * 180;
+      if (_stillFor >= 1.0 && (_grav - nearest).abs() <= 30) {
+        _base = nearest;
+        _fused = _grav; // phone is still: gravity is exact, drop any transient
+        _zero = _base + trim;
+        locked = true;
+      }
+    }
   }
 
   static double _wrap(double x) {
@@ -146,9 +178,18 @@ class SteeringEstimator {
     return v;
   }
 
-  double angle({bool invert = false}) => (_fused - _zero) * (invert ? -1 : 1);
+  double angle({bool invert = false}) {
+    if (!locked) return 0;
+    return (_fused - _zero) * (invert ? -1 : 1);
+  }
 
-  void setZero() => _zero = _fused;
+  void setZero() {
+    if (!locked) {
+      _base = (_fused / 180).roundToDouble() * 180;
+      locked = true;
+    }
+    _zero = _fused;
+  }
 
   /// Current zero relative to the landscape position, -180..180 degrees.
   double get trimFromLandscape => _wrap(_zero - _base);

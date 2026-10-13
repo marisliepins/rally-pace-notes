@@ -4,10 +4,11 @@ A quick test of the pace-notes idea using only the iPhone's own sensors, before 
 Flutter code, running for now as a web app in iPhone Safari (no Mac or Apple developer account needed).
 The same code can later be built as a native iPhone and Android app.
 
-## What it does (version 0.4)
+## What it does (version 0.5)
 
 - **Steering angle → corner grade.** The phone sits on the steering wheel in landscape (turned left from portrait). The gyroscope holds the angle, and gravity corrects slow drift. While the car itself is turning (yaw), gravity correction pauses, because cornering force tilts the gravity reading. Road bumps don't pause it.
-- **Straight ahead = phone in landscape.** This is set automatically at start, so the wheel doesn't need to be straight when you start. **ZERO** fine-tunes it for a slightly tilted mount, and that adjustment is saved for the next start.
+- **Straight ahead = phone in landscape.** It's fixed automatically once the phone has been held still in landscape for 1 second; until then the screen says "Hold phone still in landscape". **Hold ZERO** to fine-tune it for a slightly tilted mount. That adjustment is saved and confirmed on screen.
+- **Saving settings:** SAVE or the back arrow both save, and a green banner confirms it. "Close without saving" discards changes. Each start shows a banner saying whether your saved settings were loaded. **Settings → Status** shows whether the app runs from the Home Screen (settings kept) or in a Safari tab (lost if Private), and when settings were last saved.
 - **Two display modes** (Settings → *Hold max value through the corner*):
   - **Off (default):** shows the live value.
   - **On:** shows the largest grade of the corner until the wheel is back below the grade-1 angle.

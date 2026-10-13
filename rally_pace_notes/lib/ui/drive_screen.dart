@@ -68,8 +68,13 @@ class _DriveScreenState extends State<DriveScreen>
 
   Future<void> _openSettings() async {
     c.driveActive = false;
+    // Plain fade, no swipe-back gesture: leaving Settings always goes
+    // through its save logic.
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => SettingsScreen(c: c)),
+      PageRouteBuilder<void>(
+        pageBuilder: (_, __, ___) => SettingsScreen(c: c),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+      ),
     );
     c.driveActive = true;
   }
@@ -95,7 +100,7 @@ class _DriveScreenState extends State<DriveScreen>
   Widget _content() {
     final since = DateTime.now().difference(c.eventAt).inMilliseconds;
     final flashBg = since < 220;
-    final showBanner = since < 1800;
+    final showBanner = since < c.eventMs;
     return Column(
       children: [
         _topBar(),
@@ -121,7 +126,7 @@ class _DriveScreenState extends State<DriveScreen>
                       top: 6,
                       left: 0,
                       right: 0,
-                      child: Center(child: _banner(c.eventText)),
+                      child: Center(child: _banner(c.eventText, c.eventKind)),
                     ),
                   AnimatedBuilder(
                     animation: _hold,
@@ -178,14 +183,20 @@ class _DriveScreenState extends State<DriveScreen>
                 ),
               ),
             ),
-          OutlinedButton(
-            onPressed: c.setZero,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: kText,
-              side: const BorderSide(color: kLine, width: 2),
-              minimumSize: const Size(72, 44),
+          // Hold to set, so a stray touch can't move the zero.
+          GestureDetector(
+            onTap: () => c.flash('HOLD ZERO to set straight ahead'),
+            onLongPress: c.setZero,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 72, minHeight: 44),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                border: Border.all(color: kLine, width: 2),
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: const Text('ZERO', style: TextStyle(color: kText, fontWeight: FontWeight.w700)),
             ),
-            child: const Text('ZERO', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
           IconButton(
             onPressed: _openSettings,
@@ -258,8 +269,12 @@ class _DriveScreenState extends State<DriveScreen>
                     child: const SizedBox.expand(),
                   ),
                 ),
-                Text(
-                  peakMode && c.corner.active
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                  !c.steering.locked
+                      ? 'Hold phone still in landscape'
+                      : peakMode && c.corner.active
                       ? '${angle.abs().round()}° · max ${shown.abs().round()}°'
                       : '${angle.abs().round()}°${angle.abs() >= c.settings.deadZone ? (angle >= 0 ? ' L' : ' R') : ''}',
                   style: const TextStyle(
@@ -268,6 +283,7 @@ class _DriveScreenState extends State<DriveScreen>
                     fontWeight: FontWeight.w600,
                     fontFeatures: tabular,
                   ),
+                ),
                 ),
               ],
             ),
@@ -377,10 +393,22 @@ class _DriveScreenState extends State<DriveScreen>
     );
   }
 
-  Widget _banner(String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(color: kAccent, borderRadius: BorderRadius.circular(8)),
-        child: Text(text, style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.w800)),
+  Widget _banner(String text, FlashKind kind) => Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: switch (kind) {
+            FlashKind.ok => kGood,
+            FlashKind.bad => kBad,
+            FlashKind.info => kAccent,
+          },
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w800),
+        ),
       );
 
   Widget _holdRing(double v) => Container(

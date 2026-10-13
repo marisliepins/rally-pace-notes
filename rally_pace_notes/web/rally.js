@@ -3,7 +3,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.4';
+  var VERSION = '0.5';
   var KEY = 'rally.settings.v1';
   var S = {
     gx: 0, gy: 0,
@@ -144,10 +144,18 @@
     requestWake();
     S.started = true;
 
+    var finished = false;
     function finish() {
+      if (finished) return;
+      finished = true;
       window.addEventListener('devicemotion', onMotion);
       if (overlay) overlay.style.display = 'none';
     }
+    // Never leave the start screen covering the app, even if iOS doesn't
+    // answer the permission request.
+    setTimeout(function () {
+      if (!finished) { S.motion = 'no answer to permission request'; finish(); }
+    }, 5000);
     if (p) {
       p.then(function (r) {
         S.motion = r === 'granted' ? 'waiting for data' : 'denied';
@@ -175,18 +183,73 @@
   });
 
   // ------------------------------------------------- Flutter interface
+  // ---------------------------------------------------- diagnostics
+  // A small grey line in the top-left corner (outside the Flutter app):
+  // "touch N" counts touches that reach the page, "app N" counts how often
+  // the app reads the sensors (it must keep rising), "err" shows the last
+  // error. Lets us tell "taps not arriving" from "app stopped".
+  var D = { touches: 0, polls: 0, err: '' };
+  document.addEventListener('touchstart', function () { D.touches++; }, { capture: true, passive: true });
+  document.addEventListener('mousedown', function () { D.touches++; }, true);
+  window.addEventListener('error', function (e) {
+    D.err = (e && e.message ? e.message : 'error').slice(0, 80);
+  });
+  var origErr = console.error;
+  console.error = function () {
+    try { D.err = Array.prototype.join.call(arguments, ' ').slice(0, 80); } catch (x) { /* ignore */ }
+    return origErr.apply(console, arguments);
+  };
+  setInterval(function () {
+    var el = document.getElementById('rally-diag');
+    if (!el) {
+      if (!document.body) return;
+      el = document.createElement('div');
+      el.id = 'rally-diag';
+      el.style.cssText = 'position:fixed;left:4px;top:env(safe-area-inset-top,0px);z-index:9997;' +
+        'pointer-events:none;font:11px -apple-system,system-ui,sans-serif;color:#7d8896;' +
+        'background:rgba(0,0,0,0.5);padding:1px 4px;border-radius:4px;max-width:60vw;' +
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      document.body.appendChild(el);
+    }
+    el.textContent = 'v' + VERSION + ' · ' + (isHomeScreenApp() ? 'home' : 'safari') +
+      ' · touch ' + D.touches + ' · app ' + D.polls + (D.err ? ' · err: ' + D.err : '');
+    el.style.color = D.err ? '#ff4d4d' : '#7d8896';
+  }, 500);
+
   window.rallyGetMotion = function () {
+    D.polls++;
     return [S.gx, S.gy, S.gyro[0], S.gyro[1], S.gyro[2], S.hasGyro ? 1 : 0, S.n];
   };
   window.rallyDrainFixes = function () { var f = S.fixes; S.fixes = []; return f; };
   window.rallyDrainKeys = function () { var k = S.keys; S.keys = []; return k; };
+  function isHomeScreenApp() {
+    try {
+      return window.navigator.standalone === true ||
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: fullscreen)').matches;
+    } catch (e) { return false; }
+  }
+  function savedAt() {
+    try { return localStorage.getItem(KEY + '.at') || ''; } catch (e) { return ''; }
+  }
   window.rallyStatus = function () {
-    return JSON.stringify({ motion: S.motion, geo: S.geo, wake: S.wake, started: S.started });
+    return JSON.stringify({ motion: S.motion, geo: S.geo, wake: S.wake, started: S.started,
+      homeScreen: isHomeScreenApp(), savedAt: savedAt() });
   };
   window.rallyLoad = function () {
     try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; }
   };
+  // Saves and reads back; returns '' on success or an error message.
   window.rallySave = function (s) {
-    try { localStorage.setItem(KEY, s); } catch (e) { /* ignore */ }
+    try {
+      localStorage.setItem(KEY, s);
+      var now = new Date();
+      var p = function (n) { return (n < 10 ? '0' : '') + n; };
+      localStorage.setItem(KEY + '.at', p(now.getDate()) + '.' + p(now.getMonth() + 1) + ' ' +
+        p(now.getHours()) + ':' + p(now.getMinutes()));
+      return localStorage.getItem(KEY) === s ? '' : 'read-back mismatch';
+    } catch (e) {
+      return 'storage error: ' + (e && e.message ? e.message : e);
+    }
   };
 })();

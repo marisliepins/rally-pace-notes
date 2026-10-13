@@ -19,6 +19,13 @@ void feed(SteeringEstimator s, double deg, List<double>? gyro) {
   s.update(gx: v[0], gy: v[1], gyroDelta: gyro, dt: 0.02, useGyro: true, tau: 0.8);
 }
 
+/// Phone held still at [deg] for 1.2 s so straight ahead gets fixed.
+void settle(SteeringEstimator s, double deg) {
+  for (var i = 0; i < 60; i++) {
+    feed(s, deg, [0, 0, 0]);
+  }
+}
+
 void main() {
   test('trip: distance, short reset, total reset, odometer', () {
     final t = Trip();
@@ -98,7 +105,7 @@ void main() {
   test('steering: gravity + gyro, axis learned, 90° left', () {
     final s = SteeringEstimator();
     const steps = 150;
-    feed(s, 0, null);
+    settle(s, 0);
     for (var i = 1; i <= steps; i++) {
       feed(s, 90.0 * i / steps, [0, 0, -90.0 / steps]);
     }
@@ -114,7 +121,7 @@ void main() {
 
   test('steering: holds the angle in a long corner despite sideways force', () {
     final s = SteeringEstimator();
-    feed(s, 0, null);
+    settle(s, 0);
     // learn the gyro axis: wheel to 90° and back
     for (var i = 1; i <= 30; i++) {
       feed(s, 3.0 * i, [0, 0, -3]);
@@ -145,26 +152,56 @@ void main() {
 
   test('steering: straight ahead = landscape at start, plus saved trim', () {
     final a = SteeringEstimator();
-    for (var i = 0; i < 50; i++) {
-      feed(a, 12, null);
-    }
+    settle(a, 12);
     expect(a.angle(), closeTo(12, 0.1)); // wheel was 12° left at start
     final b = SteeringEstimator()..trim = 3;
-    for (var i = 0; i < 50; i++) {
-      feed(b, 12, null);
-    }
+    settle(b, 12);
     expect(b.angle(), closeTo(9, 0.1));
     final c = SteeringEstimator(); // phone in the other landscape
-    for (var i = 0; i < 50; i++) {
-      feed(c, -170, null);
-    }
+    settle(c, -170);
     expect(c.angle(), closeTo(10, 0.1));
     c.setZero();
     expect(c.trimFromLandscape, closeTo(10, 0.1));
   });
 
+  test('steering: portrait start waits, then locks when still in landscape', () {
+    final s = SteeringEstimator();
+    settle(s, 90); // portrait: too far from landscape to lock
+    expect(s.locked, isFalse);
+    expect(s.angle(), 0);
+    for (var i = 1; i <= 20; i++) {
+      feed(s, 90 - 4.3 * i, [-4.3, 0, 0]); // turned to landscape (4° off)
+    }
+    expect(s.locked, isFalse);
+    settle(s, 4);
+    expect(s.locked, isTrue);
+    expect(s.angle(), closeTo(4, 0.5));
+  });
+
+  test('steering: parked (GPS) never pauses gravity correction', () {
+    final s = SteeringEstimator();
+    settle(s, 0);
+    for (var i = 1; i <= 30; i++) {
+      feed(s, 3.0 * i, [-3, 0, 0]);
+    }
+    for (var i = 1; i <= 30; i++) {
+      feed(s, 90 - 3.0 * i, [3, 0, 0]);
+    }
+    expect(s.gyroAxis, 0);
+    // 10°/s rotation about the vertical: pauses while driving...
+    for (var i = 0; i < 10; i++) {
+      s.update(gx: g, gy: 0, gyroDelta: [0, 0.2, 0], dt: 0.02, useGyro: true, tau: 0.8);
+    }
+    expect(s.gravityPaused, isTrue);
+    // ...but not when GPS says the car is parked (e.g. phone moved by hand)
+    for (var i = 0; i < 10; i++) {
+      s.update(gx: g, gy: 0, gyroDelta: [0, 0.2, 0], dt: 0.02, useGyro: true, tau: 0.8, stationary: true);
+    }
+    expect(s.gravityPaused, isFalse);
+  });
+
   void learnAlpha(SteeringEstimator s) {
-    feed(s, 0, null);
+    settle(s, 0);
     for (var i = 1; i <= 30; i++) {
       feed(s, 3.0 * i, [-3, 0, 0]);
     }
@@ -217,7 +254,7 @@ void main() {
 
   test('steering: keeps counting past 180°', () {
     final s = SteeringEstimator();
-    s.update(gx: g, gy: 0, dt: 0.02, useGyro: false, tau: 0.8);
+    settle(s, 0);
     for (var deg = 5; deg <= 270; deg += 5) {
       final v = grav(deg.toDouble());
       s.update(gx: v[0], gy: v[1], dt: 0.02, useGyro: false, tau: 0.8);

@@ -12,7 +12,10 @@ import 'trip.dart';
 
 import 'dart:math' as math;
 
-const String appVersion = '0.4';
+const String appVersion = '0.5';
+
+/// Colour of the message banner on the drive screen.
+enum FlashKind { info, ok, bad }
 
 /// Polls the sensors ~50 times a second and owns all live state.
 class AppController extends ChangeNotifier {
@@ -26,6 +29,12 @@ class AppController extends ChangeNotifier {
   Map<String, dynamic> status = const {};
   String eventText = '';
   DateTime eventAt = DateTime.fromMillisecondsSinceEpoch(0);
+  FlashKind eventKind = FlashKind.info;
+  int eventMs = 1800;
+
+  /// Whether saved settings were found on the phone at start.
+  bool loadedFromPhone = false;
+  bool _announced = false;
 
   Timer? _timer;
   int _lastCount = -1;
@@ -48,6 +57,7 @@ class AppController extends ChangeNotifier {
     if (raw != null && raw.isNotEmpty) {
       try {
         settings = Settings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        loadedFromPhone = true;
       } catch (_) {}
     }
     steering.trim = settings.zeroTrim;
@@ -88,12 +98,13 @@ class AppController extends ChangeNotifier {
         dt: dt,
         useGyro: settings.useGyro,
         tau: settings.smoothing,
+        stationary: parked,
       );
     }
     for (final f in Bridge.drainFixes()) {
       trip.addFix(f);
     }
-    if (steering.ready) {
+    if (steering.locked) {
       corner.update(
         angle: angle,
         deadZone: settings.deadZone,
@@ -113,12 +124,45 @@ class AppController extends ChangeNotifier {
       }
     }
     if (++_ticks % 25 == 0) status = Bridge.status();
+    if (!_announced && status['started'] == true) {
+      _announced = true;
+      _announceStart();
+    }
     notifyListeners();
   }
 
-  void flash(String text) {
+  /// GPS positively says the car is (nearly) standing still.
+  bool get parked {
+    final v = trip.speed;
+    final at = trip.lastFixAt;
+    if (v == null || at == null) return false;
+    return v < 1.5 && DateTime.now().difference(at).inSeconds < 5;
+  }
+
+  String get anglesText => settings.anchors.map((a) => a.round()).join(' / ');
+
+  /// Shown once after TAP TO START, so every session shows whether the
+  /// saved settings were kept.
+  void _announceStart() {
+    final home = status['homeScreen'] == true;
+    final at = (status['savedAt'] ?? '').toString();
+    if (loadedFromPhone) {
+      flash('YOUR SETTINGS LOADED${at.isEmpty ? '' : ' (saved $at)'} · $anglesText°',
+          kind: FlashKind.ok, ms: 5000);
+    } else {
+      flash(
+          'NO SAVED SETTINGS · using defaults'
+          '${home ? '' : ' · open the app from the Home Screen icon to keep settings'}',
+          kind: FlashKind.bad,
+          ms: 6000);
+    }
+  }
+
+  void flash(String text, {FlashKind kind = FlashKind.info, int ms = 1800}) {
     eventText = text;
     eventAt = DateTime.now();
+    eventKind = kind;
+    eventMs = ms;
   }
 
   /// Short tap: clear the distance since the last tap.
@@ -143,17 +187,34 @@ class AppController extends ChangeNotifier {
     final t = steering.trimFromLandscape;
     if (t.abs() <= 30) {
       settings.zeroTrim = t;
-      Bridge.save(jsonEncode(settings.toJson()));
-      flash('ZERO SET · saved');
+      final err = Bridge.save(jsonEncode(settings.toJson()));
+      if (err == null) {
+        flash('✓ ZERO SET AND SAVED', kind: FlashKind.ok, ms: 2500);
+      } else {
+        flash('ZERO SET · NOT SAVED ($err)', kind: FlashKind.bad, ms: 5000);
+      }
     } else {
-      flash('ZERO SET · not saved (more than 30° from landscape)');
+      flash('ZERO SET for now · not saved (more than 30° from landscape)',
+          kind: FlashKind.bad, ms: 4000);
     }
     notifyListeners();
   }
 
+  /// Applies and stores settings; the drive screen shows the result.
   void saveSettings(Settings s) {
     settings = s;
-    Bridge.save(jsonEncode(s.toJson()));
+    final err = Bridge.save(jsonEncode(s.toJson()));
+    final home = status['homeScreen'] == true;
+    if (err == null) {
+      flash(
+          '✓ SETTINGS SAVED · $anglesText°'
+          '${home ? '' : ' · Safari tab: may be lost if Private'}',
+          kind: home ? FlashKind.ok : FlashKind.info,
+          ms: 4000);
+    } else {
+      flash('SETTINGS NOT SAVED ($err) · used until the app closes',
+          kind: FlashKind.bad, ms: 6000);
+    }
     notifyListeners();
   }
 

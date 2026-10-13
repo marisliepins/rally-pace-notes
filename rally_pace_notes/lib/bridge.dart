@@ -21,7 +21,7 @@ external JSString? _status();
 external JSString? _load();
 
 @JS('rallySave')
-external void _save(JSString value);
+external JSString? _save(JSString value);
 
 class MotionSample {
   const MotionSample(this.gx, this.gy, this.gyro, this.hasGyro, this.count);
@@ -89,9 +89,14 @@ class Bridge {
     }
   }
 
-  static void save(String value) {
+  /// Saves to the phone and reads it back. Returns null on success,
+  /// otherwise a short error message.
+  static String? save(String value) {
     try {
-      _save(value.toJS);
-    } catch (_) {}
+      final r = _save(value.toJS)?.toDart ?? 'no answer from storage';
+      return r.isEmpty ? null : r;
+    } catch (e) {
+      return 'storage error';
+    }
   }
 }
