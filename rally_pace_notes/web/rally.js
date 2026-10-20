@@ -3,10 +3,10 @@
 (function () {
   'use strict';
 
-  var VERSION = '0.5';
+  var VERSION = '0.6';
   var KEY = 'rally.settings.v1';
   var S = {
-    gx: 0, gy: 0,
+    gx: 0, gy: 0, gz: 0,
     gyro: [0, 0, 0],      // accumulated rotation in degrees (alpha, beta, gamma)
     hasGyro: false,
     n: 0, lastT: 0,
@@ -22,6 +22,7 @@
     if (!a || typeof a.x !== 'number' || typeof a.y !== 'number') return;
     S.gx = a.x;
     S.gy = a.y;
+    S.gz = typeof a.z === 'number' ? a.z : 0;
     var now = e.timeStamp || performance.now();
     var r = e.rotationRate;
     if (r && typeof r.alpha === 'number') {
@@ -218,7 +219,7 @@
 
   window.rallyGetMotion = function () {
     D.polls++;
-    return [S.gx, S.gy, S.gyro[0], S.gyro[1], S.gyro[2], S.hasGyro ? 1 : 0, S.n];
+    return [S.gx, S.gy, S.gyro[0], S.gyro[1], S.gyro[2], S.hasGyro ? 1 : 0, S.n, S.gz];
   };
   window.rallyDrainFixes = function () { var f = S.fixes; S.fixes = []; return f; };
   window.rallyDrainKeys = function () { var k = S.keys; S.keys = []; return k; };
@@ -250,6 +251,63 @@
       return localStorage.getItem(KEY) === s ? '' : 'read-back mismatch';
     } catch (e) {
       return 'storage error: ' + (e && e.message ? e.message : e);
+    }
+  };
+
+  // ------------------------------------------------- sprint sessions
+  // Each session is stored under its own key. Returns '' or an error.
+  window.rallyStoreSet = function (key, value) {
+    try {
+      localStorage.setItem(key, value);
+      return localStorage.getItem(key) === value ? '' : 'read-back mismatch';
+    } catch (e) {
+      return (e && e.name === 'QuotaExceededError') ? 'phone storage full'
+        : 'storage error: ' + (e && e.message ? e.message : e);
+    }
+  };
+  window.rallyStoreGet = function (key) {
+    try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+  };
+  window.rallyStoreRemove = function (key) {
+    try { localStorage.removeItem(key); } catch (e) { /* ignore */ }
+  };
+
+  // -------------------------------------------------------- speech
+  // Spoken pace notes (through headphones if connected). iOS only allows
+  // speech after a tap has started it once: the START button does that.
+  window.rallySpeak = function (text, rate) {
+    try {
+      if (!('speechSynthesis' in window)) return 'no speech on this phone';
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-GB';
+      u.rate = rate || 1.15;
+      u.volume = 1;
+      window.speechSynthesis.speak(u);
+      return '';
+    } catch (e) {
+      return 'speech error';
+    }
+  };
+  window.rallySpeakStop = function () {
+    try { window.speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+  };
+
+  // ------------------------------------------------------- export
+  // Saves a file (iPhone: offers to save it to Files or share it).
+  window.rallyDownload = function (filename, mime, text) {
+    try {
+      var blob = new Blob([text], { type: mime });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+      return '';
+    } catch (e) {
+      return 'export error';
     }
   };
 })();

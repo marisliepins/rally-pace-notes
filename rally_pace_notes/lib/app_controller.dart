@@ -7,12 +7,17 @@ import 'bridge.dart';
 import 'corner.dart';
 import 'grading.dart';
 import 'settings.dart';
+import 'sprint/bike.dart';
+import 'sprint/models.dart';
+import 'sprint/recorder.dart';
+import 'sprint/stenogram.dart';
+import 'sprint/store.dart';
 import 'steering.dart';
 import 'trip.dart';
 
 import 'dart:math' as math;
 
-const String appVersion = '0.5';
+const String appVersion = '0.6';
 
 /// Colour of the message banner on the drive screen.
 enum FlashKind { info, ok, bad }
@@ -23,6 +28,15 @@ class AppController extends ChangeNotifier {
   final SteeringEstimator steering = SteeringEstimator();
   final Trip trip = Trip();
   final CornerTracker corner = CornerTracker();
+
+  // Sprint mode
+  final SprintStore sprint = SprintStore();
+  final BikeCornerAngle bike = BikeCornerAngle();
+  Recorder? recorder;
+
+  /// Result of the last finished recording (for the record screen).
+  Session? lastSession;
+  String? lastSaveError;
 
   /// Keyboard / BLE-remote keys only act while the drive screen is shown.
   bool driveActive = true;
@@ -61,6 +75,8 @@ class AppController extends ChangeNotifier {
       } catch (_) {}
     }
     steering.trim = settings.zeroTrim;
+    sprint.load();
+    applySprintPrefs();
     _timer = Timer.periodic(const Duration(milliseconds: 20), (_) => _tick());
   }
 
@@ -100,10 +116,14 @@ class AppController extends ChangeNotifier {
         tau: settings.smoothing,
         stationary: parked,
       );
+      bike.updateMotion(gx: m.gx, gy: m.gy, gz: m.gz, gyroDelta: gyroDelta, dt: dt);
     }
     for (final f in Bridge.drainFixes()) {
       trip.addFix(f);
+      bike.updateFix(f.lat, f.lon, f.speed);
+      recorder?.onFix(f, trip.odometer);
     }
+    _tickRecorder(now, tickDt);
     if (steering.locked) {
       corner.update(
         angle: angle,
@@ -129,6 +149,108 @@ class AppController extends ChangeNotifier {
       _announceStart();
     }
     notifyListeners();
+  }
+
+  // ------------------------------------------------------------ sprint
+
+  void applySprintPrefs() {
+    bike.steeringRatio = sprint.prefs.steeringRatio;
+    bike.wheelbase = sprint.prefs.wheelbase;
+  }
+
+  double get speedNow => trip.speed ?? 0;
+
+  /// Angle used for corners while recording: steering (car) or the bike's
+  /// equivalent angle (raw sign; corrected when the session is saved).
+  double _recordAngle(Recorder r) =>
+      r.type == SessionType.bike ? bike.rawAngle(speedNow) : angle;
+
+  /// Live angle to show on the record screen (positive = left).
+  double get recordDisplayAngle {
+    final r = recorder;
+    if (r != null && r.type == SessionType.bike) return bike.angle(speedNow);
+    return angle;
+  }
+
+  void _tickRecorder(DateTime now, double tickDt) {
+    final r = recorder;
+    if (r == null) return;
+    final say = r.tick(
+      nowMs: now.millisecondsSinceEpoch.toDouble(),
+      odometer: trip.odometerAt(now),
+      speed: speedNow,
+      angle: _recordAngle(r),
+      // Bike: start corners only from grade 1, so handlebar shake on a
+      // straight doesn't count as a corner.
+      deadZone: r.type == SessionType.bike
+          ? math.max(settings.deadZone, settings.anchors.first)
+          : settings.deadZone,
+      endBelow: math.max(settings.deadZone, settings.anchors.first),
+      dt: tickDt.clamp(0.0, 0.5).toDouble(),
+      lead: sprint.prefs.lead,
+    );
+    if (say != null && sprint.prefs.speak) Bridge.speak(say, rate: sprint.prefs.rate);
+    if (r.state == RecState.finished && !r.saved) _saveRecording(r);
+  }
+
+  /// START on the record screen: arm a new recording. The clock starts when
+  /// the vehicle moves off.
+  void startRecording(SessionType type) {
+    final ref = type == SessionType.run ? sprint.reference : null;
+    final r = Recorder(type: type, reference: ref)..arm();
+    recorder = r;
+    lastSession = null;
+    lastSaveError = null;
+    // The first speech must come from a tap on iPhone; this also confirms
+    // that the headphones work.
+    if (sprint.prefs.speak) {
+      Bridge.speak(type == SessionType.run ? 'Ready' : 'Recording ready', rate: sprint.prefs.rate);
+    }
+    notifyListeners();
+  }
+
+  /// STOP: armed = cancel, running = finish now.
+  void stopRecording() {
+    final r = recorder;
+    if (r == null) return;
+    final wasArmed = r.state == RecState.armed;
+    r.stop(DateTime.now().millisecondsSinceEpoch.toDouble());
+    if (wasArmed) recorder = null;
+    notifyListeners();
+  }
+
+  void speakTest() =>
+      Bridge.speak('${spokenCall('L3- long')}, 150', rate: sprint.prefs.rate);
+
+  void closeRecorder() {
+    final r = recorder;
+    if (r != null && r.state == RecState.running) return;
+    recorder = null;
+    Bridge.speakStop();
+  }
+
+  void _saveRecording(Recorder r) {
+    r.saved = true;
+    final created = r.startEpochMs ?? DateTime.now().millisecondsSinceEpoch;
+    final s = r.toSession(
+      id: '${DateTime.now().millisecondsSinceEpoch}',
+      name: sprint.nextName(r.type),
+      createdAt: created,
+      cfg: gradeConfig,
+      lengthLabel: settings.lengthLabel,
+      signFix: r.type == SessionType.bike ? bike.sign : 1,
+    );
+    final err = sprint.save(s);
+    lastSession = s;
+    lastSaveError = err;
+    if (err == null && s.type.isRecce) {
+      // The newest recce becomes the reference for the runs.
+      sprint.prefs.refId = s.id;
+      sprint.savePrefs();
+    }
+    if (sprint.prefs.speak) {
+      Bridge.speak('Finish. ${spokenTime(s.durationMs)}', rate: sprint.prefs.rate);
+    }
   }
 
   /// GPS positively says the car is (nearly) standing still.

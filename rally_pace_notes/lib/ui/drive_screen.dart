@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../app_controller.dart';
 import '../settings.dart';
 import 'settings_screen.dart';
+import 'sprint_home.dart';
 import 'theme.dart';
 
 class DriveScreen extends StatefulWidget {
@@ -64,6 +65,17 @@ class _DriveScreenState extends State<DriveScreen>
     if (e.pointer != _pointer) return;
     _pointer = null;
     _hold.reset();
+  }
+
+  Future<void> _openSprint() async {
+    c.driveActive = false;
+    await Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        pageBuilder: (_, __, ___) => SprintHomeScreen(c: c),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+      ),
+    );
+    c.driveActive = true;
   }
 
   Future<void> _openSettings() async {
@@ -197,6 +209,13 @@ class _DriveScreenState extends State<DriveScreen>
               ),
               child: const Text('ZERO', style: TextStyle(color: kText, fontWeight: FontWeight.w700)),
             ),
+          ),
+          IconButton(
+            onPressed: _openSprint,
+            iconSize: 30,
+            color: kAccent,
+            tooltip: 'Sprint',
+            icon: const Icon(Icons.flag),
           ),
           IconButton(
             onPressed: _openSettings,

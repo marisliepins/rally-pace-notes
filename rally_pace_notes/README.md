@@ -4,7 +4,7 @@ A quick test of the pace-notes idea using only the iPhone's own sensors, before 
 Flutter code, running for now as a web app in iPhone Safari (no Mac or Apple developer account needed).
 The same code can later be built as a native iPhone and Android app.
 
-## What it does (version 0.5)
+## What it does (version 0.6)
 
 - **Steering angle → corner grade.** The phone sits on the steering wheel in landscape (turned left from portrait). The gyroscope holds the angle, and gravity corrects slow drift. While the car itself is turning (yaw), gravity correction pauses, because cornering force tilts the gravity reading. Road bumps don't pause it.
 - **Straight ahead = phone in landscape.** It's fixed automatically once the phone has been held still in landscape for 1 second; until then the screen says "Hold phone still in landscape". **Hold ZERO** to fine-tune it for a slightly tilted mount. That adjustment is saved and confirmed on screen.
@@ -21,6 +21,18 @@ The same code can later be built as a native iPhone and Android app.
 - **Bluetooth remotes that act as a keyboard:**
   - Space, Enter, → or ↓ = reset distance.
   - ← ↑ Backspace or Esc = reset all.
+
+## Sprint mode (version 0.6)
+
+Open it with the orange **flag** button on the main screen.
+
+1. **Bike recce** (phone on the handlebar) or **Car recce**: press START. The clock starts when you move off. At the finish, press STOP AT FINISH. The app builds the **stenogram**, for example `START · 100 · L3 long · 150 · R5 long · 30 · R3L2R4 · 80 · FINISH`, and remembers where the finish line is.
+   - **Bike:** corners are graded from their radius as the steering angle your car would need (steering ratio and wheelbase are set in Sprint). Left and right are learned from GPS.
+   - **Corners less than 15 m apart** become one item, for example a chicane (roter) `R3L2R4`.
+   - The newest recce is used for runs. Tap a note to correct its text. *Swap L / R* and *Re-grade* are available on the recce screen.
+2. **Run**: press START, then drive off whenever you're ready (the clock starts on moving off). Each note is spoken **4 s before the corner** (adjustable), through headphones if connected. The run **stops by itself at the finish line**; the crossing time is interpolated between GPS points.
+3. **Compare**: open a run to see the time at every note, the difference to your best run, and the entry and minimum speed.
+4. **Export** each session as JSON (full data) or GPX (for video overlay tools). Safari can delete site data that isn't used for a week, so export important sessions.
 
 ## Publish it (one time, about 10 minutes)
 
@@ -49,6 +61,7 @@ Every later change you upload is rebuilt and republished automatically. If a bui
 | `lib/steering.dart` | Gravity + gyro fusion; learns the gyro axis automatically (unit-tested) |
 | `lib/trip.dart` | GPS distance with jitter/accuracy filtering (unit-tested) |
 | `lib/corner.dart` | Corner detection: peak angle and length (unit-tested) |
+| `lib/sprint/` | Sprint mode: sessions, stenogram, bike grading, recorder, storage, export (unit-tested) |
 | `lib/app_controller.dart` | 50 Hz polling loop, taps, keys, settings persistence |
 | `lib/ui/drive_screen.dart` | Main landscape screen |
 | `lib/ui/settings_screen.dart` | Grade table, mode, thresholds, units, sensor options |
