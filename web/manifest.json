@@ -1,0 +1,12 @@
+{
+  "name": "Rally Pace Notes",
+  "short_name": "Pace Notes",
+  "start_url": ".",
+  "display": "fullscreen",
+  "background_color": "#0b0d10",
+  "theme_color": "#0b0d10",
+  "description": "Rally pace-notes MVP",
+  "orientation": "landscape",
+  "prefer_related_applications": false,
+  "icons": []
+}

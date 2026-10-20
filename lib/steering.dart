@@ -1,0 +1,196 @@
+import 'dart:math' as math;
+
+/// Estimates steering-wheel rotation from a phone fixed to the wheel.
+///
+/// * Gravity direction in the screen plane gives an absolute, drift-free angle.
+/// * The gyroscope (when available) gives fast, smooth short-term motion and
+///   reduces the effect of cornering forces. The gyro axis and sign are
+///   learned automatically by correlating them with the gravity angle, so the
+///   differences between iPhone and Android sensor conventions don't matter.
+/// * Angles are unwrapped, so turning past ±180° keeps counting.
+///
+/// Positive angle = phone rotated counter-clockwise as seen from the driver
+/// = wheel turned LEFT (can be inverted in settings).
+class SteeringEstimator {
+  double _grav = 0;
+  double? _lastRaw;
+  double _fused = 0;
+  double _zero = 0;
+  bool ready = false;
+  final List<double> _score = [0, 0, 0];
+  double _turnRate = 0;
+  double _base = 0;
+  double _stillFor = 0;
+  double _stillRef = 0;
+
+  /// Straight ahead has been fixed: the phone was held still in landscape
+  /// for 1 s (or ZERO was pressed). Before that, angle() is 0.
+  bool locked = false;
+
+  /// Saved fine-tune offset (degrees) from the landscape position, set by ZERO.
+  double trim = 0;
+
+  /// Car rotation rate (deg/s) above which gravity correction pauses.
+  static const double turnGate = 3.0;
+
+  /// Smoothed car rotation rate in deg/s (from the non-steering gyro axes).
+  double get carTurnRate => _turnRate;
+  bool get gravityPaused => _turnRate > turnGate;
+
+  /// Gyro axis index (0 = alpha, 1 = beta, 2 = gamma) once learned.
+  int? get gyroAxis {
+    var best = 0;
+    for (var k = 1; k < 3; k++) {
+      if (_score[k].abs() > _score[best].abs()) best = k;
+    }
+    return _score[best].abs() >= 50 ? best : null;
+  }
+
+  String get gyroInfo {
+    final a = gyroAxis;
+    if (a == null) return 'learning (turn the wheel a bit)';
+    const names = ['alpha', 'beta', 'gamma'];
+    return '${names[a]} ${_score[a] >= 0 ? '+' : '-'} · car turn ${_turnRate.round()}°/s'
+        '${gravityPaused ? ' (gyro only)' : ''}';
+  }
+
+  /// [gyroDelta]: rotation since last sample in degrees, per axis
+  /// (alpha, beta, gamma). [dt] seconds since last sample. [tau] fusion time
+  /// constant in seconds (bigger = trust gyro longer, smoother).
+  void update({
+    required double gx,
+    required double gy,
+    List<double>? gyroDelta,
+    required double dt,
+    required bool useGyro,
+    required double tau,
+    bool stationary = false,
+  }) {
+    final d = dt.clamp(0.001, 0.5).toDouble();
+    final gravValid = math.sqrt(gx * gx + gy * gy) > 2.0;
+    var gravDelta = 0.0;
+    if (gravValid) {
+      final raw = -math.atan2(gy, gx) * 180 / math.pi;
+      final last = _lastRaw;
+      if (last == null) {
+        _lastRaw = raw;
+        _grav = raw;
+        _fused = raw;
+        _stillRef = raw;
+        ready = true;
+        return;
+      }
+      gravDelta = _wrap(raw - last);
+      _lastRaw = raw;
+      _grav += gravDelta;
+    }
+    if (!ready) return;
+
+    if (gyroDelta != null && gravValid && gravDelta.abs() > 0.2) {
+      for (var k = 0; k < 3; k++) {
+        _score[k] = (_score[k] + gravDelta * gyroDelta[k]).clamp(-5000.0, 5000.0).toDouble();
+      }
+    }
+
+    final axis = gyroAxis;
+
+    // Car yaw (turning) is rotation about the vertical, i.e. along gravity.
+    // While the car is turning, sideways force tilts the gravity reading, so
+    // gravity correction is paused and the gyro alone holds the angle.
+    // Only the yaw part counts: pitch/bounce from bumps is about an axis at
+    // right angles to gravity and is ignored. Fast attack, 0.5 s release.
+    if (gyroDelta != null && axis != null) {
+      double rate;
+      final gn = math.sqrt(gx * gx + gy * gy);
+      if (axis == 0 && gravValid) {
+        // steering on alpha (z): x = beta, y = gamma
+        rate = ((gyroDelta[1] * gx + gyroDelta[2] * gy) / gn).abs() / d;
+      } else {
+        var sq = 0.0;
+        for (var k = 0; k < 3; k++) {
+          if (k != axis) sq += gyroDelta[k] * gyroDelta[k];
+        }
+        rate = math.sqrt(sq) / d;
+      }
+      _turnRate = rate > _turnRate ? rate : _turnRate + (rate - _turnRate) * (d / (0.5 + d));
+    } else {
+      _turnRate = 0;
+    }
+    // GPS says the car is parked: no cornering force, nothing to pause.
+    if (stationary) _turnRate = 0;
+
+    if (useGyro && gyroDelta != null && axis != null) {
+      final step = gyroDelta[axis] * (_score[axis] >= 0 ? 1 : -1);
+      final predicted = _fused + step;
+      if (gravValid && _turnRate <= turnGate) {
+        final w = tau / (tau + d);
+        _fused = w * predicted + (1 - w) * _grav;
+      } else if (gravValid) {
+        // Car turning (or rough road): only a very slow correction (20 s) so
+        // gyro drift can't build up, while a corner's angle is held.
+        const slow = 20.0;
+        final w = slow / (slow + d);
+        _fused = w * predicted + (1 - w) * _grav;
+      } else {
+        _fused = predicted;
+      }
+    } else if (gravValid) {
+      const lp = 0.08; // light smoothing when gravity only
+      _fused += (_grav - _fused) * (d / (lp + d));
+    }
+
+    // Fix straight ahead once the phone is held still near landscape for 1 s.
+    // Straight ahead = the nearest landscape position plus the saved ZERO
+    // fine-tune, so the wheel need not be straight and a portrait start works.
+    if (!locked && gravValid) {
+      var gyroRate = 0.0;
+      if (gyroDelta != null) {
+        var sq = 0.0;
+        for (final v in gyroDelta) {
+          sq += v * v;
+        }
+        gyroRate = math.sqrt(sq) / d;
+      }
+      if ((_grav - _stillRef).abs() > 3 || gyroRate > 15) {
+        _stillRef = _grav;
+        _stillFor = 0;
+      } else {
+        _stillFor += d;
+      }
+      final nearest = (_grav / 180).roundToDouble() * 180;
+      if (_stillFor >= 1.0 && (_grav - nearest).abs() <= 30) {
+        _base = nearest;
+        _fused = _grav; // phone is still: gravity is exact, drop any transient
+        _zero = _base + trim;
+        locked = true;
+      }
+    }
+  }
+
+  static double _wrap(double x) {
+    var v = x;
+    while (v > 180) {
+      v -= 360;
+    }
+    while (v < -180) {
+      v += 360;
+    }
+    return v;
+  }
+
+  double angle({bool invert = false}) {
+    if (!locked) return 0;
+    return (_fused - _zero) * (invert ? -1 : 1);
+  }
+
+  void setZero() {
+    if (!locked) {
+      _base = (_fused / 180).roundToDouble() * 180;
+      locked = true;
+    }
+    _zero = _fused;
+  }
+
+  /// Current zero relative to the landscape position, -180..180 degrees.
+  double get trimFromLandscape => _wrap(_zero - _base);
+}
