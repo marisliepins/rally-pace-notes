@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../corner.dart';
 import '../grading.dart';
 import '../trip.dart';
+import 'edit.dart';
 import 'geo.dart';
 import 'models.dart';
 import 'stenogram.dart';
@@ -75,6 +76,9 @@ class Recorder {
   Announcer? announcer;
 
   bool get isRun => type == SessionType.run;
+
+  /// Runs and check drives speak the reference notes and stop at its finish.
+  bool get usesNotes => type == SessionType.run || type == SessionType.check;
   List<Note> get notes => reference?.notes ?? const [];
   double get refDistance => reference?.distance ?? 0;
 
@@ -108,8 +112,8 @@ class Recorder {
     if (state != RecState.idle) return;
     state = RecState.armed;
     final f = reference?.finish;
-    _finishDet = (isRun && f != null) ? FinishDetector(f) : null;
-    announcer = (isRun && notes.isNotEmpty) ? Announcer(notes, refDistance) : null;
+    _finishDet = (usesNotes && f != null) ? FinishDetector(f) : null;
+    announcer = (usesNotes && notes.isNotEmpty) ? Announcer(notes, refDistance) : null;
   }
 
   /// Each GPS fix. [odometer]: trip odometer after this fix was added.
@@ -178,7 +182,7 @@ class Recorder {
     }
     final started = _tracker.active &&
         (!wasActive || (done != null) || ((_tracker.peak > 0) != (wasPeak > 0)));
-    if (started && isRun) _sync();
+    if (started && usesNotes) _sync();
 
     final s = _startMs ?? nowMs;
     if (nowMs - _lastSampleMs >= 200) {
@@ -206,6 +210,17 @@ class Recorder {
       _lastSynced = best;
     }
   }
+
+  /// Check drive: mark the note just driven (or being driven) as wrong.
+  /// Returns its index, or null.
+  int? flagCurrent() {
+    if (!usesNotes || notes.isEmpty || state != RecState.running) return null;
+    final i = noteIndexAt(notes, trackPos);
+    notes[i].flagged = true;
+    return i;
+  }
+
+  int get flaggedCount => notes.where((n) => n.flagged).length;
 
   /// STOP button. Armed: cancel. Running: finish now.
   void stop(double nowMs) {

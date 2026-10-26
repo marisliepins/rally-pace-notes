@@ -17,7 +17,7 @@ import 'trip.dart';
 
 import 'dart:math' as math;
 
-const String appVersion = '0.6';
+const String appVersion = '0.7';
 
 /// Colour of the message banner on the drive screen.
 enum FlashKind { info, ok, bad }
@@ -134,7 +134,11 @@ class AppController extends ChangeNotifier {
       );
     }
     final keys = Bridge.drainKeys();
-    if (driveActive) {
+    final rec = recorder;
+    if (rec != null && rec.type == SessionType.check) {
+      // Check drive: the remote's main button marks a wrong note.
+      if (keys.any(_shortResetKeys.contains)) flagCurrentNote();
+    } else if (driveActive) {
       for (final k in keys) {
         if (_shortResetKeys.contains(k)) {
           resetDistance();
@@ -190,13 +194,47 @@ class AppController extends ChangeNotifier {
       lead: sprint.prefs.lead,
     );
     if (say != null && sprint.prefs.speak) Bridge.speak(say, rate: sprint.prefs.rate);
-    if (r.state == RecState.finished && !r.saved) _saveRecording(r);
+    if (r.state == RecState.finished && !r.saved) {
+      if (r.type == SessionType.check) {
+        _finishCheck(r);
+      } else {
+        _saveRecording(r);
+      }
+    }
+  }
+
+  /// Check drive: mark the note just driven as wrong (tap or remote button).
+  void flagCurrentNote() {
+    final r = recorder;
+    final ref = sprint.reference;
+    if (r == null || ref == null) return;
+    final i = r.flagCurrent();
+    if (i == null) return;
+    final err = sprint.save(ref);
+    flash(
+      err == null ? 'MARKED ${i + 1}: ${r.notes[i].text}' : 'MARK NOT SAVED: $err',
+      kind: err == null ? FlashKind.info : FlashKind.bad,
+      ms: 2500,
+    );
+    Bridge.speak('marked', rate: 1.4);
+    notifyListeners();
+  }
+
+  void _finishCheck(Recorder r) {
+    r.saved = true;
+    final ref = sprint.reference;
+    if (ref != null) lastSaveError = sprint.save(ref);
+    lastSession = null;
+    if (sprint.prefs.speak) {
+      final n = r.flaggedCount;
+      Bridge.speak('Check finished. $n ${n == 1 ? 'note' : 'notes'} marked', rate: sprint.prefs.rate);
+    }
   }
 
   /// START on the record screen: arm a new recording. The clock starts when
   /// the vehicle moves off.
   void startRecording(SessionType type) {
-    final ref = type == SessionType.run ? sprint.reference : null;
+    final ref = (type == SessionType.run || type == SessionType.check) ? sprint.reference : null;
     final r = Recorder(type: type, reference: ref)..arm();
     recorder = r;
     lastSession = null;
@@ -204,7 +242,7 @@ class AppController extends ChangeNotifier {
     // The first speech must come from a tap on iPhone; this also confirms
     // that the headphones work.
     if (sprint.prefs.speak) {
-      Bridge.speak(type == SessionType.run ? 'Ready' : 'Recording ready', rate: sprint.prefs.rate);
+      Bridge.speak(type == SessionType.car ? 'Recording ready' : 'Ready', rate: sprint.prefs.rate);
     }
     notifyListeners();
   }

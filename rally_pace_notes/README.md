@@ -4,7 +4,7 @@ A quick test of the pace-notes idea using only the iPhone's own sensors, before 
 Flutter code, running for now as a web app in iPhone Safari (no Mac or Apple developer account needed).
 The same code can later be built as a native iPhone and Android app.
 
-## What it does (version 0.6)
+## What it does (version 0.7)
 
 - **Steering angle → corner grade.** The phone sits on the steering wheel in landscape (turned left from portrait). The gyroscope holds the angle, and gravity corrects slow drift. While the car itself is turning (yaw), gravity correction pauses, because cornering force tilts the gravity reading. Road bumps don't pause it.
 - **Straight ahead = phone in landscape.** It's fixed automatically once the phone has been held still in landscape for 1 second; until then the screen says "Hold phone still in landscape". **Hold ZERO** to fine-tune it for a slightly tilted mount. That adjustment is saved and confirmed on screen.
@@ -22,17 +22,22 @@ The same code can later be built as a native iPhone and Android app.
   - Space, Enter, → or ↓ = reset distance.
   - ← ↑ Backspace or Esc = reset all.
 
-## Sprint mode (version 0.6)
+## Sprint mode (version 0.7)
 
-Open it with the orange **flag** button on the main screen.
+Open it with the orange **flag** button on the main screen. The screen has three steps:
 
-1. **Bike recce** (phone on the handlebar) or **Car recce**: press START. The clock starts when you move off. At the finish, press STOP AT FINISH. The app builds the **stenogram**, for example `START · 100 · L3 long · 150 · R5 long · 30 · R3L2R4 · 80 · FINISH`, and remembers where the finish line is.
-   - **Bike:** corners are graded from their radius as the steering angle your car would need (steering ratio and wheelbase are set in Sprint). Left and right are learned from GPS.
-   - **Corners less than 15 m apart** become one item, for example a chicane (roter) `R3L2R4`.
-   - The newest recce is used for runs. Tap a note to correct its text. *Swap L / R* and *Re-grade* are available on the recce screen.
-2. **Run**: press START, then drive off whenever you're ready (the clock starts on moving off). Each note is spoken **4 s before the corner** (adjustable), through headphones if connected. The run **stops by itself at the finish line**; the crossing time is interpolated between GPS points.
-3. **Compare**: open a run to see the time at every note, the difference to your best run, and the entry and minimum speed.
-4. **Export** each session as JSON (full data) or GPX (for video overlay tools). Safari can delete site data that isn't used for a week, so export important sessions.
+1. **RECCE.** Press START, then drive the stage slowly; the clock starts when you move off. At the finish, press STOP AT FINISH. The **notes screen opens automatically** and shows:
+   - a **drawing of the stage** with each note numbered;
+   - the **stenogram**, for example `START · 100 · L5 · 50 · R4 · 100 · L5 · … · FINISH`;
+   - a **list of notes**. Tap a note, or its number on the drawing, to open the **editor**. There you can:
+     - set left or right, the grade 1–6 and −/+ with big buttons, and add extra words;
+     - change the **straight before** the note and the **corner length** in 5 or 10 m steps (later notes move with it, and "long" or "super long" follows the length);
+     - **use the measured value** again, **merge** a note with the next one, **split** a group, **insert** a note or **delete** one.
+   - Corners less than 15 m apart are one item, for example a chicane `R3L2R4`.
+2. **CHECK.** Drive the stage again. Each note is spoken 4 s before the corner (adjustable). **Tap the screen**, or the remote's main button, when a note is wrong; it's marked red in the notes. EDIT NOTES opens them straight away. Check drives aren't timed or stored.
+3. **RACE.** Timed runs with the notes spoken. A run stops by itself at the finish line. Open a run to compare it with your best, note by note.
+
+Export each session as JSON or GPX. Safari can delete site data that isn't used for a week.
 
 ## Publish it (one time, about 10 minutes)
 

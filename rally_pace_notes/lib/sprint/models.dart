@@ -1,15 +1,18 @@
 /// Data for the sprint mode: recorded sessions, corners and pace notes.
 library;
 
-enum SessionType { bike, car, run }
+/// bike: no longer offered (kept so old sessions still open).
+/// check: drive with the notes spoken to mark wrong ones; not stored.
+enum SessionType { bike, car, run, check }
 
 extension SessionTypeText on SessionType {
   String get label => switch (this) {
         SessionType.bike => 'Bike recce',
         SessionType.car => 'Car recce',
         SessionType.run => 'Run',
+        SessionType.check => 'Check drive',
       };
-  bool get isRecce => this != SessionType.run;
+  bool get isRecce => this == SessionType.bike || this == SessionType.car;
 }
 
 SessionType sessionTypeFrom(String? s) => SessionType.values
@@ -43,6 +46,7 @@ class Note {
     required this.call,
     this.custom,
     this.group = false,
+    this.flagged = false,
   });
 
   /// Track distance (m from start) where the corner or group begins.
@@ -60,6 +64,9 @@ class Note {
   /// More than one corner (chicane / "roter" / S-bend).
   bool group;
 
+  /// Marked as wrong during a check drive.
+  bool flagged;
+
   String get text => (custom == null || custom!.trim().isEmpty) ? call : custom!.trim();
   double get end => at + length;
 
@@ -69,6 +76,7 @@ class Note {
         'call': call,
         if (custom != null && custom!.trim().isNotEmpty) 'custom': custom,
         if (group) 'group': true,
+        if (flagged) 'flag': true,
       };
 
   static Note fromJson(dynamic j) {
@@ -79,6 +87,7 @@ class Note {
       call: m['call'] as String,
       custom: m['custom'] as String?,
       group: m['group'] == true,
+      flagged: m['flag'] == true,
     );
   }
 
